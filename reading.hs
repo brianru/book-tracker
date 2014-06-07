@@ -1,7 +1,11 @@
-import Data.Time
-import System.Locale
-import Data.List.Split
 import System.IO
+import Data.Time
+import Data.Aeson
+import Data.Maybe
+import Data.List.Split
+import Network.HTTP.Conduit
+import qualified Data.ByteString.Char8 as C
+import qualified Data.ByteString.Lazy as B
 
 data Book = Book { isbn :: Int
                  , title :: String
@@ -14,25 +18,32 @@ data Book = Book { isbn :: Int
                  --, succ :: Book
                  } deriving (Show, Eq)
 
-bookFromShelfariEntry :: [String] -> Book
--- fill in data from api
-bookFromShelfariEntry x = Book { isbn = x!!2
-                               , title = x!!3
-                               , author = x!!4
-                               , whenRead = [x!!14]
-                               , whenAdded = x!!20
-                               , pageCount = 0
-                               , wordCount = 0
-                               }
+type ISBN = String
+parseShelfariData :: String -> [ISBN]
+parseShelfariData f = let (x:xs) = map (splitOn "\t") $ lines f
+                          withQuotes = map (\a -> a!!2) xs
+                          withoutQuotes = map (filter (/= '"')) withQuotes
+                      in take 3 withoutQuotes -- NOTE 3 for testing
 
-readShelfariData :: String -> [Book]
-readShelfariData f = let (x:xs) = map (splitOn "\t") $ lines f
-                     in map bookFromShelfariEntry xs
+parseAPIResponses xs = mapMaybe (\x -> (decode x)::Maybe Object) xs
 
 importShelfari :: FilePath -> FilePath -> IO ()
-importShelfari fin fout = do tsv <- readFile fin
-                             let books = readShelfariData tsv
-                             writeFile fout $ show books
+importShelfari fileIn fileOut = do dotTSV <- readFile fileIn
+                                   let isbns = parseShelfariData dotTSV
+                                       api = "https://openlibrary.org/api/books?\
+                                             \jscmd=data&format=json&bibkeys=ISBN:"
+                                   responses <- mapM (\s -> simpleHttp $ api ++ s) isbns 
+                                   let books = parseAPIResponses responses
+                                   B.putStr $ head responses
+                                   --writeFile fileOut $ show books
+
+--save :: [Book] -> Boolean
+
+--load :: FilePath -> [Book]
+
+--update :: [Book] -> [Book] -> [Book]
+
+--supplementWithAmazon :: ISBN -> [String] -> [(String, String)]
 
 
 -- TODO
